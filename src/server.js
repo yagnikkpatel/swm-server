@@ -4,6 +4,8 @@ import cors from "cors";
 import connectDB from "./config/db.js";
 import superAdminRoutes from "./routes/superAdmin.route.js";
 import adminRoutes from "./routes/admin.route.js";
+import customerRoutes from "./routes/customer.route.js";
+import orderRoutes from "./routes/order.route.js";
 
 dotenv.config();
 
@@ -21,6 +23,8 @@ app.get("/", (req, res) => {
 
 app.use("/api", superAdminRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/orders", orderRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is connected on port http://localhost:${PORT}`);
