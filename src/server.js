@@ -6,6 +6,7 @@ import superAdminRoutes from "./routes/superAdmin.route.js";
 import adminRoutes from "./routes/admin.route.js";
 import customerRoutes from "./routes/customer.route.js";
 import orderRoutes from "./routes/order.route.js";
+import monthlyRecordRoutes from "./routes/monthlyRecord.route.js";
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use("/api", superAdminRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/monthly-records", monthlyRecordRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is connected on port http://localhost:${PORT}`);
