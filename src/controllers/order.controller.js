@@ -1,54 +1,155 @@
 import Order from "../models/order.model.js";
 import Customer from "../models/customer.model.js";
 
-// ─── Create Order ───────────────────────────────────────────────────────────
+// ─── Create Order (Single or Multiorder) ────────────────────────────────────
 export const createOrder = async (req, res) => {
   try {
-    const {
-      customerId,
-      quantity,
-      pricePerJug,
-      deliveryDate,
-      deliveryTime,
-      isCustomDelivery,
-      customDeliveryDetails,
-    } = req.body;
+    const { type, order, orders } = req.body;
 
-    if (!customerId || !quantity || !deliveryDate || !deliveryTime) {
+    if (!type || !["single", "multiorder"].includes(type)) {
       return res.status(400).json({
         success: false,
-        message: "Customer ID, quantity, delivery date and time are required",
+        message: "Invalid type. Must be 'single' or 'multiorder'",
       });
     }
 
-    const customer = await Customer.findById(customerId);
-    if (!customer) {
-      return res.status(404).json({ success: false, message: "Customer not found" });
+    // --- Handle Single Order ---
+    if (type === "single") {
+      if (!order) {
+        return res.status(400).json({ success: false, message: "Order data is required" });
+      }
+
+      const {
+        customerId,
+        quantity,
+        pricePerJug,
+        deliveryDate,
+        deliveryTime,
+        isCustomDelivery,
+        customDeliveryDetails,
+      } = order;
+
+      if (!customerId || !quantity || !deliveryDate || !deliveryTime) {
+        return res.status(400).json({
+          success: false,
+          message: "Customer ID, quantity, delivery date and time are required",
+        });
+      }
+
+      const customer = await Customer.findById(customerId);
+      if (!customer) {
+        return res.status(404).json({ success: false, message: "Customer not found" });
+      }
+
+      const finalPricePerJug = pricePerJug !== undefined ? pricePerJug : customer.pricePerJug;
+      const totalAmount = quantity * finalPricePerJug;
+
+      const newOrder = new Order({
+        customer: customerId,
+        quantity,
+        pricePerJug: finalPricePerJug,
+        totalAmount,
+        deliveryDate,
+        deliveryTime,
+        isCustomDelivery: isCustomDelivery || false,
+        customDeliveryDetails: isCustomDelivery ? customDeliveryDetails : {},
+      });
+
+      await newOrder.save();
+
+      return res.status(201).json({
+        success: true,
+        message: "Order placed successfully",
+        order: newOrder,
+      });
     }
 
-    // Use provided pricePerJug or fall back to customer's default
-    const finalPricePerJug = pricePerJug !== undefined ? pricePerJug : customer.pricePerJug;
+    // --- Handle Multiorder (Multiple orders for the SAME customer) ---
+    if (type === "multiorder") {
+      const { customerId } = req.body;
 
-    const totalAmount = quantity * finalPricePerJug;
+      if (!customerId) {
+        return res.status(400).json({ success: false, message: "Customer ID is required" });
+      }
 
-    const order = new Order({
-      customer: customerId,
-      quantity,
-      pricePerJug: finalPricePerJug,
-      totalAmount,
-      deliveryDate,
-      deliveryTime,
-      isCustomDelivery: isCustomDelivery || false,
-      customDeliveryDetails: isCustomDelivery ? customDeliveryDetails : {},
-    });
+      if (!orders || !Array.isArray(orders) || orders.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "An array of orders is required for multiorder type",
+        });
+      }
 
-    await order.save();
+      const customer = await Customer.findById(customerId);
+      if (!customer) {
+        return res.status(404).json({ success: false, message: "Customer not found" });
+      }
 
-    return res.status(201).json({
-      success: true,
-      message: "Order placed successfully",
-      order,
-    });
+      const createdOrders = [];
+
+      for (const orderData of orders) {
+        const {
+          quantity,
+          pricePerJug,
+          deliveryDate,
+          deliveryTime,
+          isCustomDelivery,
+          customDeliveryDetails,
+        } = orderData;
+
+        if (!quantity || !deliveryDate || !deliveryTime) {
+          // Skip or return error? Let's be strict for a single customer batch.
+          return res.status(400).json({
+            success: false,
+            message: "Quantity, delivery date and time are required for all orders in the batch",
+          });
+        }
+
+        const finalPricePerJug = pricePerJug !== undefined ? pricePerJug : customer.pricePerJug;
+        const totalAmount = quantity * finalPricePerJug;
+
+        const newOrder = new Order({
+          customer: customerId,
+          quantity,
+          pricePerJug: finalPricePerJug,
+          totalAmount,
+          deliveryDate,
+          deliveryTime,
+          isCustomDelivery: isCustomDelivery || false,
+          customDeliveryDetails: isCustomDelivery ? customDeliveryDetails : {},
+        });
+
+        createdOrders.push(newOrder);
+      }
+
+      if (createdOrders.length > 0) {
+        await Order.insertMany(createdOrders);
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: `${createdOrders.length} orders placed successfully for customer ${customer.name}`,
+        customer: {
+          _id: customer._id,
+          name: customer.name,
+          contact: customer.contact,
+          whatsappNumber: customer.whatsappNumber,
+          addresses: customer.addresses,
+        },
+        orders: createdOrders.map((o) => ({
+          _id: o._id,
+          quantity: o.quantity,
+          pricePerJug: o.pricePerJug,
+          totalAmount: o.totalAmount,
+          deliveryDate: o.deliveryDate,
+          deliveryTime: o.deliveryTime,
+          isCustomDelivery: o.isCustomDelivery,
+          customDeliveryDetails: o.customDeliveryDetails,
+          status: o.status,
+          createdAt: o.createdAt,
+          updatedAt: o.updatedAt,
+        })),
+      });
+    }
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
